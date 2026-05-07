@@ -1,0 +1,64 @@
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.pyc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+data/
+
+# Cache
+.cache/
+*.cache
+.pytest_cache/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Dependencies
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Database/Data files
+*.db
+*.sqlite
+*.sqlite3
+downloads/
+cache/
+
+# Testing
+.tox/
+.hypothesis/
+
+# OS specific
+Thumbs.db
+
+secrets/
