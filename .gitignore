@@ -23,7 +23,6 @@ build/
 .eggs/
 
 # Environment
-.env
 .env.local
 .env.*.local
 
