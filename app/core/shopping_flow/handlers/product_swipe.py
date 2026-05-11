@@ -6,6 +6,41 @@ from app.core.shopping_flow.final_summary import generate_final_summary_with_llm
 from app.models.ui_chunks import A2UIChunk, MessageChunk
 from app.services.analyze_dislike_reason_service import analyze_dislike_reason
 
+# Các từ khóa thay đổi ngữ cảnh tìm kiếm (giới tính, độ tuổi, loại hình)
+_CONTEXT_SIGNALS = {
+    "nam", "nữ", "bé", "trẻ em", "người lớn",
+    "men", "women", "kids", "adult",
+    "unisex", "nam giới", "nữ giới",
+}
+
+def _keywords_change_context(preferred_keywords: list[str], session: dict) -> bool:
+    """
+    Kiểm tra xem preferred_keywords có thay đổi ngữ cảnh tìm kiếm không.
+    Nếu user nói 'cho nam' thì cần re-search, không chỉ filter.
+    """
+    if not preferred_keywords:
+        return False
+    for kw in preferred_keywords:
+        if any(signal in kw.lower() for signal in _CONTEXT_SIGNALS):
+            return True
+    return False
+
+
+def _build_new_keyword(session: dict, preferred_keywords: list[str]) -> str:
+    """
+    Ghép keyword mới từ vi_keyword gốc + preferred_keywords của user.
+    VD: "áo khoác" + ["nam", "áo khoác nam"] → "áo khoác nam"
+    """
+    base = (session.get("vi_keyword") or session.get("original_keyword") or "").strip()
+
+    # Lấy keyword preferred ngắn gọn nhất (tránh lặp)
+    best_preferred = min(preferred_keywords, key=len) if preferred_keywords else ""
+
+    # Nếu preferred đã bao gồm base thì dùng preferred luôn
+    if base.lower() in best_preferred.lower():
+        return best_preferred.strip()
+
+    return f"{base} {best_preferred}".strip()
 
 async def handle_product_swipe(session: dict, session_id: str, action: str, data):
     if action != "PRODUCT_FEEDBACK":
@@ -88,6 +123,41 @@ async def handle_product_swipe(session: dict, session_id: str, action: str, data
                         is_banned = any(kw.lower() in p_text for kw in banned_keywords if kw.strip())
                         if not is_banned:
                             filtered_products.append(p)
+
+                    needs_research = _keywords_change_context(preferred_keywords, session)
+                    if needs_research and preferred_keywords:
+                        yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
+                                              "data": {"statusText": "Đang tìm kiếm lại theo yêu cầu mới...",
+                                                       "progressPercent": 25}})
+
+                        # Cập nhật vi_keyword trong session
+                        new_keyword = _build_new_keyword(session, preferred_keywords)
+                        session["vi_keyword"] = new_keyword
+
+                        # Re-search với keyword mới
+                        from app.core.shopping_flow.phase_utils import search_and_prepare_stream
+                        new_raw, new_ranked_stream = await search_and_prepare_stream(
+                            final_search_keyword=new_keyword,
+                            user_message=new_keyword,
+                            answers=session.get("answers", []),
+                            trace_id=session_id,
+                        )
+                        session["raw_products"] = new_raw
+
+                        # Rebuild pending từ kết quả mới, bỏ các sản phẩm đã swipe
+                        interacted_ids = {
+                            str(item.get("productId") or item.get("product_id"))
+                            for item in session.get("whitelist", []) + session.get("blacklist", [])
+                        }
+
+                        new_pending = []
+                        async for prod in new_ranked_stream:
+                            p_dict = prod.model_dump(by_alias=False) if hasattr(prod, "model_dump") else prod
+                            if str(p_dict.get("product_id")) not in interacted_ids:
+                                new_pending.append(prod)
+
+                        session["pending_products"] = new_pending
+                        filtered_products = new_pending  # Dùng pool mới
                 else:
                     filtered_products = session["pending_products"]
 
