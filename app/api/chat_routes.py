@@ -10,7 +10,7 @@ from app.agents.adk_orchestrator import run_shopping_orchestrator
 from app.models.ui_chunks import ChatRequest, ErrorChunk, DoneChunk
 from app.utils.trace_log import is_trace_stream_enabled
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter()
 
 
 def _trace_log(trace_id: str, stage: str, **details: Any) -> None:
@@ -45,7 +45,7 @@ def _extract_product_preview(chunk_payload: dict[str, Any]) -> dict[str, Any] | 
     }
 
 
-@router.post("/stream")
+@router.post("/chat")
 async def stream_chat(payload: ChatRequest) -> EventSourceResponse:
     async def _event_generator():
         trace_id = payload.sessionId or f"anonymous-{id(payload)}"

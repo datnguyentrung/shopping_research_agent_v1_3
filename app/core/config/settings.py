@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     VERTEX_ENGINE_ID: str = ""  # Đã sửa lại lỗi chính tả từ VERTX thành VERTEX
     PROJECT_ID: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
+    REDIS_URL: str = ""
+    NGROK_URL: str = ""
 
     # --- Các biến bổ sung từ file .env ---
     DEBUG: bool = False

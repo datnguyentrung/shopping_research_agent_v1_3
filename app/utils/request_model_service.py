@@ -5,7 +5,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from app.core.config import settings
+from app.core.config.settings import settings
 
 client = None
 

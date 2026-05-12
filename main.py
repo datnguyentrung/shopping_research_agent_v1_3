@@ -2,8 +2,6 @@
 Shopping Research Agent API
 Main application entry point with FastAPI configuration.
 """
-
-import os
 import logging
 from contextlib import asynccontextmanager
 
@@ -13,7 +11,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 
 from app.core.config import settings
-from app.api.routes import router as chat_router
+from app.api import chat_router, virtual_try_on_router
+from app.services import redis_service
 # from app.api.endpoints import router as research_router
 
 # Import hàm khởi tạo model (điều chỉnh đường dẫn import cho khớp với project của bạn)
@@ -46,10 +45,20 @@ async def lifespan(app: FastAPI):
         # Thêm các logic khởi tạo khác ở đây (ví dụ: kết nối DB, Redis...)
 
         logger.info("✅ All models initialized successfully!")
-        logger.info("✨ API is ready to serve requests")
     except Exception as e:
         logger.error(f"❌ Initialization failed: {str(e)}")
         raise e  # Bắt buộc raise để server KHÔNG khởi động nếu model bị lỗi
+
+    try:
+        logger.info("⏳ Connecting to Redis...")
+        redis_service.connect()
+
+        logger.info("✅ Redis connected successfully!")
+    except Exception as e:
+        logger.error(f"❌ Redis connection failed: {str(e)}")
+        raise e  # Bắt buộc raise để server KHÔNG khởi động nếu Redis bị lỗi
+
+    logger.info("✨ API is ready to serve requests")
 
     yield  # Ứng dụng hoạt động tại điểm này
 
@@ -84,7 +93,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Include routers
 app.include_router(chat_router)       # Endpoint chat hiện tại
-# app.include_router(research_router)   # Endpoint research
+app.include_router(virtual_try_on_router)   # Endpoint research
 
 @app.get("/")
 async def root():
