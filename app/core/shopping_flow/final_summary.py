@@ -29,13 +29,13 @@ async def generate_final_summary_with_llm(
     selected_products = []
     rejected_products = []
 
-    # ── offset + 4%: Bắt đầu chuẩn bị dữ liệu ──
+    # ── offset + 1%: Khởi động tổng hợp ──
     yield A2UIChunk(
         a2ui={
             "type": "a2ui_processing_status",
             "data": {
-                "statusText": f"Đang tổng hợp {len(whitelist)} mẫu bạn thích và phân tích đối chiếu...",
-                "progressPercent": progress_offset + 4,
+                "statusText": f"📋 Bắt đầu tổng hợp {len(whitelist)} sản phẩm bạn thích...",
+                "progressPercent": progress_offset + 1,
             },
         }
     )
@@ -74,13 +74,13 @@ async def generate_final_summary_with_llm(
                 }
             )
 
-    # ── offset + 10%: Đã phân loại xong liked/rejected ──
+    # ── offset + 8%: Phân loại sản phẩm ──
     yield A2UIChunk(
         a2ui={
             "type": "a2ui_processing_status",
             "data": {
-                "statusText": f"Đã phân loại {len(selected_products)} thích, {len(rejected_products)} không thích. Đang tìm ứng viên...",
-                "progressPercent": progress_offset + 10,
+                "statusText": f"🔍 Phân loại: {len(selected_products)} mẫu yêu thích, {len(rejected_products)} mẫu bỏ qua. Tìm ứng viên bổ sung...",
+                "progressPercent": progress_offset + 8,
             },
         }
     )
@@ -127,13 +127,13 @@ async def generate_final_summary_with_llm(
             }
         )
 
-    # ── offset + 16%: Đã xây dựng xong danh sách ứng viên ──
+    # ── offset + 14%: Xây dựng danh sách ứng viên ──
     yield A2UIChunk(
         a2ui={
             "type": "a2ui_processing_status",
             "data": {
-                "statusText": f"Đã chọn ra {len(ai_candidates)} ứng viên tiềm năng. Đang chuẩn bị prompt phân tích...",
-                "progressPercent": progress_offset + 16,
+                "statusText": f"✅ Chọn ra {len(ai_candidates)} ứng viên tiềm năng. Chuẩn bị prompt AI...",
+                "progressPercent": progress_offset + 14,
             },
         }
     )
@@ -146,21 +146,35 @@ async def generate_final_summary_with_llm(
     [ỨNG VIÊN]: {json.dumps(ai_candidates, ensure_ascii=False)}
     """
 
-    # ── offset + 20%: Trước khi gọi LLM ──
+    # ── offset + 18%: Gọi LLM để viết báo cáo ──
     yield A2UIChunk(
         a2ui={
             "type": "a2ui_processing_status",
             "data": {
-                "statusText": "AI đang viết báo cáo tổng hợp cuối cùng cho bạn...",
-                "progressPercent": progress_offset + 20,
+                "statusText": "🧠 AI đang suy ngẫm để viết báo cáo tư vấn chuyên sâu cho bạn...",
+                "progressPercent": progress_offset + 18,
             },
         }
     )
 
     try:
+        stream_count = 0
         async for text_chunk in generate_final_summary_stream(prompt):
+            stream_count += 1
             if text_chunk:
                 yield MessageChunk(content=text_chunk)
+            # Dynamic progress: Từ offset+18% đến offset+28%
+            if stream_count % 10 == 0:
+                progress = min(progress_offset + 28, progress_offset + 18 + (stream_count // 5))
+                yield A2UIChunk(
+                    a2ui={
+                        "type": "a2ui_processing_status",
+                        "data": {
+                            "statusText": f"✍️ AI đang viết... ({stream_count} đoạn)",
+                            "progressPercent": progress,
+                        },
+                    }
+                )
     except Exception as exc:
         print(f"Error generating final summary: {exc}")
         traceback.print_exc()
@@ -168,13 +182,13 @@ async def generate_final_summary_with_llm(
             content="\n\n*Hệ thống đang quá tải, không thể tạo báo cáo tóm tắt lúc này. Bạn vui lòng xem lại danh sách ở trên nhé!*"
         )
 
-    # ── offset + 26%: Sau khi LLM stream hoàn tất ──
+    # ── offset + 30%: Hoàn tất LLM stream ──
     yield A2UIChunk(
         a2ui={
             "type": "a2ui_processing_status",
             "data": {
-                "statusText": "Đã nhận xong nội dung báo cáo từ AI...",
-                "progressPercent": progress_offset + 26,
+                "statusText": "✓ Hoàn tất báo cáo từ AI!",
+                "progressPercent": progress_offset + 30,
             },
         }
     )

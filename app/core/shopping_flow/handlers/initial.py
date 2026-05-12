@@ -1,4 +1,3 @@
-import random
 import traceback
 import uuid
 
@@ -19,63 +18,55 @@ async def adk_initial_node(state: ShoppingState):
     trace_id = state.get("session_id", "unknown")
     user_message = state.get("current_message", "")
 
-    yield A2UIChunk(a2ui={"type": "a2ui_processing_status", "data": {"statusText": "Đang phân tích..."}})
+    # ── 1% ── Bắt đầu phân tích
+    yield A2UIChunk(a2ui={"type": "a2ui_processing_status", "data": {"statusText": "Đang bóc tách yêu cầu của bạn...", "progressPercent": 1}})
 
     try:
+        # ── 5% ── Google Translate sửa lỗi
+        yield A2UIChunk(a2ui={"type": "a2ui_processing_status", "data": {"statusText": "Đang sửa lỗi chính tả và dịch sang tiếng Anh...", "progressPercent": 5}})
         result = await get_bilingual_and_correct(user_message)
         vi_keyword, en_keyword = result.get("vi"), result.get("en")
 
+        # ── 12% ── Phân loại danh mục bằng ML
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
                 "data": {
-                    "statusText": f"Đã nhận diện từ khóa: '{vi_keyword}'. Đang đối chiếu...",
-                    "progressPercent": 30
+                    "statusText": f"Đã nhận diện từ khóa: '{vi_keyword}'. Đang dò tìm danh mục phù hợp...",
+                    "progressPercent": 12
                 }
             })
 
         categories = classify_keyword_topk(en_keyword, k=1)
         top_cat = categories[0] if categories else None
 
-        # [TIẾN TRÌNH 50%] Tìm thấy danh mục
-        if top_cat:
-            yield A2UIChunk(
-                a2ui={
-                    "type": "a2ui_processing_status",
-                    "data": {
-                        "statusText": f"Đã định vị được danh mục '{top_cat.get('category_name')}'. Đang chuẩn bị các tiêu chí để lọc...",
-                        "progressPercent": 50
-                    },
-                }
-            )
-
         trace_print(trace_id, "handle_initial_phase", "fix_and_translate_result", viKeyword=vi_keyword, enKeyword=en_keyword)
 
         if not top_cat or top_cat.get('score', 0) < 0.5:
             vi_keyword = "Thời trang và Phụ kiện"
+            # ── 15% ── Fallback danh mục mềm
             yield MessageChunk(
                 content="Do bạn chưa nêu tên sản phẩm cụ thể, mình sẽ mở danh mục tổng hợp 'Thời trang & Phụ kiện' để bạn tham khảo nhé. Bạn có thể gõ tên món đồ (vd: 'áo phông', 'giày thể thao') bất cứ lúc nào để mình tìm chính xác hơn!"
             )
             top_cat = {"category_id": "fashion", "category_name": "Clothing, Shoes & Jewelry"}
 
-            # [TIẾN TRÌNH 40%] Vague path — trước khi lấy danh mục con
             yield A2UIChunk(
                 a2ui={
                     "type": "a2ui_processing_status",
                     "data": {
-                        "statusText": "Đang mở danh mục 'Thời trang & Phụ kiện' để bạn lựa chọn...",
-                        "progressPercent": 40,
+                        "statusText": "Đang khai thác danh mục 'Thời trang & Phụ kiện' để tìm nhóm nhỏ hơn...",
+                        "progressPercent": 18,
                     },
                 }
             )
         else:
-            # [TIẾN TRÌNH 40%] Trước khi phân loại danh mục
+            # ── 15% ── Đã xác định danh mục chính
             yield A2UIChunk(
                 a2ui={
                     "type": "a2ui_processing_status",
                     "data": {
-                        "statusText": f"Đang tìm danh mục phù hợp nhất cho '{vi_keyword}'...",
-                        "progressPercent": 40,
+                        "statusText": f"✅ Tìm thấy danh mục '{top_cat.get('category_name', 'Unknown')}'. Đang tìm nhóm chi tiết...",
+                        "progressPercent": 18,
                     },
                 }
             )
@@ -86,11 +77,21 @@ async def adk_initial_node(state: ShoppingState):
         if not top_cat:
             yield MessageChunk(content="Xin lỗi, mình không tìm thấy danh mục phù hợp cho từ khóa này.")
             state["phase"] = "ERROR"
-            # -> FIX 3: Luôn yield state trước khi return
             yield {"state_update": state}
             return
 
         state["current_category_id"] = top_cat["category_id"]
+
+        # ── 22% ── Tra cứu danh mục con từ DB
+        yield A2UIChunk(
+            a2ui={
+                "type": "a2ui_processing_status",
+                "data": {
+                    "statusText": "Đang tây tác cơ sở dữ liệu để tìm danh mục con...",
+                    "progressPercent": 22,
+                },
+            }
+        )
         options, category_map, children = get_child_categories(top_cat["category_id"], trace_id)
 
         need_drilldown_ui = False
@@ -98,6 +99,17 @@ async def adk_initial_node(state: ShoppingState):
             state["category_map"] = category_map
             target_kw = state.get("vi_keyword", "").lower()
             matched_option = None
+
+            # ── 28% ── Tìm match được danh mục con
+            yield A2UIChunk(
+                a2ui={
+                    "type": "a2ui_processing_status",
+                    "data": {
+                        "statusText": f"Tìm thấy {len(options)} loại trong danh mục này. Đang căn chỉnh...",
+                        "progressPercent": 28,
+                    },
+                }
+            )
 
             for opt in options:
                 if target_kw in opt.lower() or opt.lower() in target_kw:
@@ -117,19 +129,30 @@ async def adk_initial_node(state: ShoppingState):
                 "name": "Bạn đang tìm kiếm loại mặt hàng nào dưới đây?",
                 "options": options,
             }
+            # ── 32% ── Hiển thị câu hỏi drilldown
+            yield A2UIChunk(
+                a2ui={
+                    "type": "a2ui_processing_status",
+                    "data": {
+                        "statusText": "Chuẩn bị giao diện lựa chọn chi tiết...",
+                        "progressPercent": 32,
+                    },
+                }
+            )
             yield build_questionnaire_chunk(first_question, allow_multiple=False)
+            yield {"state_update": state}
             return
 
         if not state.get("leaf_category_name"):
             state["leaf_category_name"] = top_cat.get("category_name", "")
 
-        # [TIẾN TRÌNH 60%] Trước khi xây dựng bộ câu hỏi thuộc tính
+        # ── 38% ── Xây dựng câu hỏi thuộc tính từ DB
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
                 "data": {
-                    "statusText": "Đang chuẩn bị các tiêu chí lọc sản phẩm...",
-                    "progressPercent": 60,
+                    "statusText": "Đang khai thác các tiêu chí lọc (màu, size, thương hiệu...) từ cơ sở dữ liệu...",
+                    "progressPercent": 38,
                 },
             }
         )
@@ -144,28 +167,39 @@ async def adk_initial_node(state: ShoppingState):
             if "options" in first_attr and len(first_attr["options"]) > 4:
                 first_attr["options"] = first_attr["options"][:4]
 
+            # ── 48% ── Chuẩn bị câu hỏi đầu tiên
+            yield A2UIChunk(
+                a2ui={
+                    "type": "a2ui_processing_status",
+                    "data": {
+                        "statusText": f"Tìm thấy {len(state['attributes']) + 1} tiêu chí. Chuẩn bị hỏi bạn về \"{first_attr.get('name', 'thuộc tính')}\"...",
+                        "progressPercent": 48,
+                    },
+                }
+            )
             yield build_questionnaire_chunk(first_attr, allow_multiple=True)
             yield {"state_update": state}
             return
 
-        # [TIẾN TRÌNH 65%] Bắt đầu tìm kiếm
+        # Không có tiêu chí → tìm kiếm luôn
+        # ── 55% ── Khởi động tìm kiếm song song
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
-                "data": {"statusText": "Đang thiết lập thông số tìm kiếm phù hợp nhất cho bạn...",
-                         "progressPercent": 65},
+                "data": {"statusText": "Sắp bắt đầu tìm kiếm sản phẩm. Đang thiết lập thông số...",
+                         "progressPercent": 55},
             }
         )
 
         final_search_keyword = f"{state.get('original_keyword', '')} {state.get('leaf_category_name', '')}".strip()
 
-        # [TIẾN TRÌNH 80%] Quét dữ liệu
+        # ── 60% ── Gọi API song song (Vertex + Serper)
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
                 "data": {
-                    "statusText": f"Đang quét hàng ngàn dữ liệu sản phẩm cho '{state.get('leaf_category_name', '')}'...",
-                    "progressPercent": 80
+                    "statusText": f"Lục lọi hàng ngàn kho hàng tìm '{state.get('leaf_category_name', '')}'...",
+                    "progressPercent": 60
                 },
             }
         )
@@ -181,42 +215,61 @@ async def adk_initial_node(state: ShoppingState):
         state["raw_products"] = raw_products
         state["pending_products"] = []
 
-        first_prod = None
-
-        # [TIẾN TRÌNH 90%] Gọi LLM Ranking
+        # ── 72% ── Bắt đầu xếp hạng bằng AI
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
                 "data": {
-                    "statusText": "AI đang chấm điểm và chọn lọc mẫu đẹp nhất cho bạn...",
-                    "progressPercent": 90
+                    "statusText": f"Tìm thấy {len(raw_products)} sản phẩm. AI đang chấm điểm từng mẫu...",
+                    "progressPercent": 72
                 },
             }
         )
 
+        first_prod = None
+        prod_count = 0
+
         async for product in ranked_stream:
+            prod_count += 1
             state["pending_products"].append(product)
 
             if first_prod is None:
                 first_prod = product
-                # [TIẾN TRÌNH 100%]
+                # ── 98% ── Mẫu đầu tiên sân sàng
                 yield A2UIChunk(
                     a2ui={
                         "type": "a2ui_processing_status",
-                        "data": {"statusText": "Hoàn tất!", "progressPercent": 100},
+                        "data": {"statusText": f"✨ AI đã chọn ra mẫu hàng đầu tiên. Chuẩn bị hiển thị...", "progressPercent": 98},
                     }
                 )
                 yield build_interactive_product_chunk(first_prod)
                 state["phase"] = "PRODUCT_SWIPE"
+            elif prod_count % 3 == 0:
+                # Dynamic progress trong stream
+                progress = min(95, 72 + (prod_count * 2))
+                yield A2UIChunk(
+                    a2ui={
+                        "type": "a2ui_processing_status",
+                        "data": {"statusText": f"📦 Đã sắp xếp {prod_count} sản phẩm...", "progressPercent": progress},
+                    }
+                )
 
         if first_prod is None:
             yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
             state["phase"] = "DONE"
+        else:
+            # ── 100% ── Hoàn tất
+            yield A2UIChunk(
+                a2ui={
+                    "type": "a2ui_processing_status",
+                    "data": {"statusText": f"🎉 Xong! Tìm thấy {len(state['pending_products']) + 1} ứng viên.", "progressPercent": 100},
+                }
+            )
 
     except Exception as exc:
         traceback.print_exc()
         yield MessageChunk(content="Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn.")
         state["phase"] = "ERROR"
 
-    # QUAN TRỌNG: Trả về state MỚI ĐỂ ADK CẬP NHẬT
+    # Chốt state cuối cùng
     yield {"state_update": state}

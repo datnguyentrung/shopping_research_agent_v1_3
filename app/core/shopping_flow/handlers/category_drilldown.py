@@ -68,13 +68,15 @@ async def adk_category_drilldown_node(state: ShoppingState):
 
     state["current_category_id"] = selected_cat_id
 
+    # ── 3% ── Ghi nhận lựa chọn
     yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                          "data": {"statusText": f"Đã ghi nhận: {selected_name}. Đang tra cứu...",
-                                   "progressPercent": 5}})
+                          "data": {"statusText": f"✅ Ghi nhận: '{selected_name}'. Đang tây tác dữ liệu...",
+                                   "progressPercent": 3}})
 
+    # ── 8% ── Bắt đầu query DB
     yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                          "data": {"statusText": f"Đang tìm các nhóm nhỏ hơn trong '{selected_name}'...",
-                                   "progressPercent": 15}})
+                          "data": {"statusText": f"Đang khai thác nhóm sản phẩm con dưới '{selected_name}'...",
+                                   "progressPercent": 8}})
 
     try:
         options, category_map, children = get_child_categories(selected_cat_id, trace_id)
@@ -82,9 +84,10 @@ async def adk_category_drilldown_node(state: ShoppingState):
         if len(options) > 4:
             options = random.sample(options, 4)
 
+        # ── 15% ── Hoàn tất query
         yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                              "data": {"statusText": f"Đã tìm thấy {len(options)} nhóm sản phẩm con.",
-                                       "progressPercent": 25}})
+                              "data": {"statusText": f"Tìm thấy {len(options)} nhóm sản phẩm con. Chuẩn bị hiển thị...",
+                                       "progressPercent": 15}})
 
         if children:
             state["category_map"] = category_map
@@ -93,6 +96,10 @@ async def adk_category_drilldown_node(state: ShoppingState):
                 "name": "Chi tiết hơn một chút nhé, bạn muốn tìm loại nào?",
                 "options": options,
             }
+            # ── 22% ── Hiển thị giao diện câu hỏi tiếp theo
+            yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
+                                  "data": {"statusText": "Chuẩn bị giao diện lựa chọn chi tiết...",
+                                           "progressPercent": 22}})
             yield build_questionnaire_chunk(next_question, allow_multiple=False)
             yield {"state_update": state} # Báo cáo state trước khi chuyển Phase
             return
@@ -100,9 +107,10 @@ async def adk_category_drilldown_node(state: ShoppingState):
         # Đã tới leaf — lưu lại để hiển thị UI, KHÔNG dùng cho search keyword
         state["leaf_category_name"] = selected_name
 
+        # ── 28% ── Xây dựng câu hỏi thuộc tính từ DB
         yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                              "data": {"statusText": f"Đã chọn '{selected_name}'. Đang tìm tiêu chí lọc...",
-                                       "progressPercent": 35}})
+                              "data": {"statusText": f"✓ Xác định danh mục: '{selected_name}'. Đang tìm tiêu chí lọc...",
+                                       "progressPercent": 28}})
 
         state["attributes"] = build_attribute_questions(selected_cat_id, trace_id)
 
@@ -111,25 +119,28 @@ async def adk_category_drilldown_node(state: ShoppingState):
             first_attr = state["attributes"].pop(0)
             state["current_attribute_id"] = first_attr["id"]
 
+            # ── 38% ── Chuẩn bị câu hỏi đầu tiên
             yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                                  "data": {"statusText": f"Đã tìm thấy {len(state['attributes']) + 1} tiêu chí. Bắt đầu lọc nào!",
-                                           "progressPercent": 45}})
+                                  "data": {"statusText": f"Tìm thấy {len(state['attributes']) + 1} tiêu chí. Chuẩn bị hỏi bạn...",
+                                           "progressPercent": 38}})
             yield build_questionnaire_chunk(first_attr, allow_multiple=True)
             yield {"state_update": state} # Báo cáo state trước khi chuyển Phase
             return
 
         # Không có attribute → search luôn
+        # ── 45% ── Khởi động tìm kiếm song song
         yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
                               "data": {"statusText": "Đã thu thập đủ thông tin. Đang thiết lập bộ lọc...",
-                                       "progressPercent": 50}})
+                                       "progressPercent": 45}})
 
         final_search_keyword = _build_search_keyword_from_state(state)
         # -> FIX 3: Dùng hàm helper mới không cần payload
         user_message = _get_user_message_from_state(state)
 
+        # ── 55% ── Gọi API song song (Vertex + Serper)
         yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                              "data": {"statusText": f"Đang tìm kiếm '{final_search_keyword}'...",
-                                       "progressPercent": 70}})
+                              "data": {"statusText": f"Lục lọi hàng ngàn kho hàng tìm '{final_search_keyword}'...",
+                                       "progressPercent": 55}})
 
         raw_products, ranked_stream = await search_and_prepare_stream(
             final_search_keyword=final_search_keyword,
@@ -144,23 +155,37 @@ async def adk_category_drilldown_node(state: ShoppingState):
         state["pending_products"] = []
         first_prod = None
 
+        # ── 68% ── Bắt đầu xếp hạng bằng AI
         yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                              "data": {"statusText": "AI đang phân tích và xếp hạng mẫu phù hợp nhất...",
-                                       "progressPercent": 85}})
+                              "data": {"statusText": f"Tìm thấy {len(raw_products)} sản phẩm. AI đang chấm điểm...",
+                                       "progressPercent": 68}})
 
+        prod_count = 0
         async for product in ranked_stream:
+            prod_count += 1
             if first_prod is None:
                 first_prod = product
+                # ── 96% ── Mẫu đầu tiên sân sàng
                 yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                                      "data": {"statusText": "Hoàn tất!", "progressPercent": 100}})
+                                      "data": {"statusText": "✨ Mẫu hàng đầu tiên được AI chọn. Chuẩn bị hiển thị...", "progressPercent": 96}})
                 yield build_interactive_product_chunk(first_prod)
                 state["phase"] = "PRODUCT_SWIPE"
             else:
                 state["pending_products"].append(product)
+                # Dynamic progress trong stream
+                if prod_count % 2 == 0:
+                    progress = min(95, 68 + (prod_count // 2))
+                    yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
+                                          "data": {"statusText": f"📦 Đã sắp xếp {prod_count} sản phẩm...",
+                                                   "progressPercent": progress}})
 
         if first_prod is None:
             yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
             state["phase"] = "DONE"
+        else:
+            # ── 100% ── Hoàn tất
+            yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
+                                  "data": {"statusText": f"🎉 Xong! Tìm thấy {len(state['pending_products']) + 1} ứng viên.", "progressPercent": 100}})
 
     except Exception as exc:
         traceback.print_exc()
