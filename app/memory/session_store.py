@@ -1,35 +1,37 @@
-import asyncio
-from typing import Any, Dict, List
-
 from cachetools import TTLCache
+from app.memory.adk_state import ShoppingState
 
 # Quản lý session đơn giản bằng Dictionary (Memory).
+# Tương lai nếu MB Bank yêu cầu scale, bạn chỉ cần thay TTLCache bằng Redis ở đây.
 SESSION_STORE = TTLCache(maxsize=1000, ttl=3600)
 
-
-def get_or_create_session(session_id: str) -> dict:
+def get_or_create_state(session_id: str) -> ShoppingState:
     if session_id not in SESSION_STORE:
-        # Khởi tạo state mặc định cho một user mới
-        SESSION_STORE[session_id] = {
+        # Khởi tạo state mặc định cho một user mới theo đúng chuẩn ADK
+        initial_state: ShoppingState = {
+            "session_id": session_id,
             "phase": "INIT",
+            "original_keyword": "",
+            "vi_keyword": "",
+            "current_message": "",
+            "hidden_action": None,
+            "hidden_payload": None,
+            "category_map": {},
+            "current_category_id": "",  # String
+            "leaf_category_name": "",
             "attributes": [],
+            "current_attribute_id": 0,  # Integer
             "answers": [],
             "raw_products": [],
             "pending_products": [],
             "whitelist": [],
             "blacklist": [],
-            "search_task": None,
-            # Fields cho Task 3 & 4: Feedback va Routing
             "preferred_keywords": [],
-            "banned_keywords_history": [],
-            "original_keyword": "",
-            "augmented_keywords": [],
-            "category_name": "",
         }
+        SESSION_STORE[session_id] = initial_state
     return SESSION_STORE[session_id]
 
-
-def clear_session(session_id: str):
+def clear_state(session_id: str):
     """Gọi hàm này khi user hoàn tất luồng để dọn rác RAM ngay lập tức"""
     if session_id in SESSION_STORE:
         del SESSION_STORE[session_id]

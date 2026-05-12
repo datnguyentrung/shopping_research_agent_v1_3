@@ -1,3 +1,4 @@
+from typing import Union
 
 from app.models.product_schemas import CapturedData
 from app.models.ui_chunks import A2UIChunk
@@ -18,7 +19,7 @@ def build_questionnaire_chunk(attr: dict, allow_multiple: bool = True) -> A2UICh
     )
 
 
-def build_interactive_product_chunk(product_data: dict) -> A2UIChunk:
+def build_interactive_product_chunk(product_data: Union[dict, CapturedData]) -> A2UIChunk:
     """Normalize product shape and emit card payload for swipe UI."""
     if isinstance(product_data, dict):
         product_model = CapturedData(**product_data)

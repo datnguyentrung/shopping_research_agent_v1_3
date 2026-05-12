@@ -18,7 +18,7 @@ class CategoryRepository(BaseRepository[Category]):
     def get_by_name(self, name: str) -> Optional[Category]:
         return self.db.query(Category).filter(Category.name == name).first()
 
-    def get_by_parent_id(self, parent_id: int) -> list[type[Category]]:
+    def get_by_parent_id(self, parent_id: str) -> list[type[Category]]:
         return self.db.query(Category).filter(Category.parent_id == parent_id).all()
 
     def list(
