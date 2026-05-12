@@ -2,7 +2,7 @@ import random
 import traceback
 import uuid
 
-
+from app.memory.adk_state import ShoppingState
 from app.tools.gg_translate_tool import get_bilingual_and_correct
 from app.tools.query_category_classifier_tool import classify_keyword_topk
 from app.core.shopping_flow.phase_utils import (
@@ -11,60 +11,28 @@ from app.core.shopping_flow.phase_utils import (
     search_and_prepare_stream,
 )
 from app.core.shopping_flow.ui_chunks import build_interactive_product_chunk, build_questionnaire_chunk
-from app.models.ui_chunks import ChatRequest, A2UIChunk, MessageChunk
-from app.utils.trace_log import product_summary, short_preview, trace_print
+from app.models.ui_chunks import A2UIChunk, MessageChunk
+from app.utils.trace_log import trace_print
 
 
-async def handle_initial_phase(payload: ChatRequest, session: dict):
-    trace_id = session.get("_trace_id", "unknown")
-    user_message = payload.message.strip()
-    trace_print(
-        trace_id,
-        "handle_initial_phase",
-        "enter",
-        messagePreview=short_preview(user_message),
-        incomingPhase=session.get("phase"),
-    )
+async def adk_initial_node(state: ShoppingState):
+    trace_id = state.get("session_id", "unknown")
+    user_message = state.get("current_message", "")
 
-    session["whitelist"] = []
-    session["blacklist"] = []
-
-    # [TIẾN TRÌNH 5%] Khởi động
-    yield A2UIChunk(
-        a2ui={
-            "type": "a2ui_processing_status",
-            "data": {
-                "statusText": "Đang nhận diện yêu cầu của bạn...",
-                "progressPercent": 5,
-            },
-        }
-    )
-
-    # [TIẾN TRÌNH 15%] Bắt đầu phân tích
-    yield A2UIChunk(
-        a2ui={
-            "type": "a2ui_processing_status",
-            "data": {
-                "statusText": f"Đợi mình một chút, đang phân tích nhu cầu '{user_message}' của bạn nhé...",
-                "progressPercent": 15,
-            },
-        }
-    )
+    yield A2UIChunk(a2ui={"type": "a2ui_processing_status", "data": {"statusText": "Đang phân tích..."}})
 
     try:
         result = await get_bilingual_and_correct(user_message)
         vi_keyword, en_keyword = result.get("vi"), result.get("en")
 
-        # [TIẾN TRÌNH 30%] Dịch xong
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
                 "data": {
-                    "statusText": f"Đã nhận diện từ khóa: '{vi_keyword}'. Đang đối chiếu với hệ thống danh mục...",
+                    "statusText": f"Đã nhận diện từ khóa: '{vi_keyword}'. Đang đối chiếu...",
                     "progressPercent": 30
-                },
-            }
-        )
+                }
+            })
 
         categories = classify_keyword_topk(en_keyword, k=1)
         top_cat = categories[0] if categories else None
@@ -81,8 +49,7 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
                 }
             )
 
-        trace_print(trace_id, "handle_initial_phase", "fix_and_translate_result", viKeyword=vi_keyword,
-                    enKeyword=en_keyword)
+        trace_print(trace_id, "handle_initial_phase", "fix_and_translate_result", viKeyword=vi_keyword, enKeyword=en_keyword)
 
         if not top_cat or top_cat.get('score', 0) < 0.5:
             vi_keyword = "Thời trang và Phụ kiện"
@@ -113,24 +80,23 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
                 }
             )
 
-
-
-
-        session["original_keyword"] = vi_keyword
-        session["vi_keyword"] = vi_keyword
+        state["original_keyword"] = vi_keyword
+        state["vi_keyword"] = vi_keyword
 
         if not top_cat:
             yield MessageChunk(content="Xin lỗi, mình không tìm thấy danh mục phù hợp cho từ khóa này.")
-            session["phase"] = "ERROR"
+            state["phase"] = "ERROR"
+            # -> FIX 3: Luôn yield state trước khi return
+            yield {"state_update": state}
             return
 
-        session["current_category_id"] = top_cat["category_id"]
+        state["current_category_id"] = top_cat["category_id"]
         options, category_map, children = get_child_categories(top_cat["category_id"], trace_id)
 
         need_drilldown_ui = False
         if children:
-            session["category_map"] = category_map
-            target_kw = session.get("vi_keyword", "").lower()
+            state["category_map"] = category_map
+            target_kw = state.get("vi_keyword", "").lower()
             matched_option = None
 
             for opt in options:
@@ -139,13 +105,13 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
                     break
 
             if matched_option:
-                session["current_category_id"] = category_map[matched_option]
-                session["leaf_category_name"] = matched_option
+                state["current_category_id"] = category_map[matched_option]
+                state["leaf_category_name"] = matched_option
             else:
                 need_drilldown_ui = True
 
         if need_drilldown_ui:
-            session["phase"] = "CATEGORY_DRILLDOWN"
+            state["phase"] = "CATEGORY_DRILLDOWN"
             first_question = {
                 "id": "cat_drilldown_" + uuid.uuid4().hex,
                 "name": "Bạn đang tìm kiếm loại mặt hàng nào dưới đây?",
@@ -154,8 +120,8 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
             yield build_questionnaire_chunk(first_question, allow_multiple=False)
             return
 
-        if not session.get("leaf_category_name"):
-            session["leaf_category_name"] = top_cat.get("category_name", "")
+        if not state.get("leaf_category_name"):
+            state["leaf_category_name"] = top_cat.get("category_name", "")
 
         # [TIẾN TRÌNH 60%] Trước khi xây dựng bộ câu hỏi thuộc tính
         yield A2UIChunk(
@@ -168,17 +134,18 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
             }
         )
 
-        session["attributes"] = build_attribute_questions(session["current_category_id"], trace_id)
+        state["attributes"] = build_attribute_questions(state["current_category_id"], trace_id)
 
-        if session["attributes"]:
-            session["phase"] = "QUESTIONNAIRE"
-            first_attr = session["attributes"].pop(0)
-            session["current_attribute_id"] = first_attr["id"]
+        if state["attributes"]:
+            state["phase"] = "QUESTIONNAIRE"
+            first_attr = state["attributes"].pop(0)
+            state["current_attribute_id"] = first_attr["id"]
 
             if "options" in first_attr and len(first_attr["options"]) > 4:
                 first_attr["options"] = first_attr["options"][:4]
 
             yield build_questionnaire_chunk(first_attr, allow_multiple=True)
+            yield {"state_update": state}
             return
 
         # [TIẾN TRÌNH 65%] Bắt đầu tìm kiếm
@@ -190,14 +157,14 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
             }
         )
 
-        final_search_keyword = f"{session.get('original_keyword', '')} {session.get('leaf_category_name', '')}".strip()
+        final_search_keyword = f"{state.get('original_keyword', '')} {state.get('leaf_category_name', '')}".strip()
 
         # [TIẾN TRÌNH 80%] Quét dữ liệu
         yield A2UIChunk(
             a2ui={
                 "type": "a2ui_processing_status",
                 "data": {
-                    "statusText": f"Đang quét hàng ngàn dữ liệu sản phẩm cho '{session.get('leaf_category_name', '')}'...",
+                    "statusText": f"Đang quét hàng ngàn dữ liệu sản phẩm cho '{state.get('leaf_category_name', '')}'...",
                     "progressPercent": 80
                 },
             }
@@ -211,11 +178,10 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
             max_price_filter=None,
             trace_id=trace_id,
         )
-        session["raw_products"] = raw_products
-        session["pending_products"] = []
+        state["raw_products"] = raw_products
+        state["pending_products"] = []
 
         first_prod = None
-        stream_count = 0
 
         # [TIẾN TRÌNH 90%] Gọi LLM Ranking
         yield A2UIChunk(
@@ -229,8 +195,7 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
         )
 
         async for product in ranked_stream:
-            stream_count += 1
-            session["pending_products"].append(product)
+            state["pending_products"].append(product)
 
             if first_prod is None:
                 first_prod = product
@@ -242,13 +207,16 @@ async def handle_initial_phase(payload: ChatRequest, session: dict):
                     }
                 )
                 yield build_interactive_product_chunk(first_prod)
-                session["phase"] = "PRODUCT_SWIPE"
+                state["phase"] = "PRODUCT_SWIPE"
 
         if first_prod is None:
             yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
-            session["phase"] = "DONE"
+            state["phase"] = "DONE"
 
     except Exception as exc:
         traceback.print_exc()
         yield MessageChunk(content="Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn.")
-        session["phase"] = "ERROR"
+        state["phase"] = "ERROR"
+
+    # QUAN TRỌNG: Trả về state MỚI ĐỂ ADK CẬP NHẬT
+    yield {"state_update": state}

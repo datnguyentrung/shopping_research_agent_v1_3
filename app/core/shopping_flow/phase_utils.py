@@ -1,8 +1,11 @@
 
 import asyncio
 import random
+from typing import Union
 
 from app.core.shopping_flow.product_filters import apply_product_filters
+from app.memory.adk_state import ShoppingState
+from app.models.product_schemas import CapturedData
 from app.models.ui_chunks import MessageChunk
 from app.repositories.category_attribute_repository import CategoryAttributeRepository
 from app.repositories.category_repository import CategoryRepository
@@ -26,7 +29,7 @@ async def stream_static_message(text: str, chunk_size: int = 3, delay: float = 0
         await asyncio.sleep(delay)
 
 
-def build_attribute_questions(category_id: int, trace_id: str | None = None) -> list[dict]:
+def build_attribute_questions(category_id: str, trace_id: str | None = None) -> list[dict]:
     """Load inherited attributes and keep a compact randomized subset for UI questions."""
     trace_key = trace_id or "no-trace"
     trace_print(trace_key, "build_attribute_questions", "enter", categoryId=category_id)
@@ -66,7 +69,7 @@ def build_attribute_questions(category_id: int, trace_id: str | None = None) -> 
         db.close()
 
 
-def get_child_categories(category_id: int, trace_id: str | None = None) -> tuple[list[str], dict[str, int], list]:
+def get_child_categories(category_id: str, trace_id: str | None = None) -> tuple[list[str], dict[str, str], list]:
     """Load direct children for category drill-down and provide FE-ready option list."""
     trace_key = trace_id or "no-trace"
     trace_print(trace_key, "get_child_categories", "enter", categoryId=category_id)
@@ -144,9 +147,7 @@ async def search_and_prepare_stream(
     )
     return raw_products, ranked_stream
 
-# app/core/shopping_flow/phase_utils.py — thêm vào cuối file
-
-def build_search_keyword_from_answers(session: dict, answers: list | None = None) -> tuple[str, int | None, int | None]:
+def build_search_keyword_from_answers(session: ShoppingState, answers: list | None = None) -> tuple[str, int | None, int | None]:
     """
     Trả về (final_keyword, min_price, max_price) từ session + answers.
     - keyword = vi_keyword + các option KHÔNG phải giá

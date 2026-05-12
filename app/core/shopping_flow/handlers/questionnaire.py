@@ -1,16 +1,30 @@
-
 import traceback
 
-from app.core.shopping_flow.phase_utils import search_and_prepare_stream,build_search_keyword_from_answers, get_user_message
-from app.core.shopping_flow.product_filters import parse_budget_bounds
+from app.core.shopping_flow.phase_utils import search_and_prepare_stream, build_search_keyword_from_answers
 from app.core.shopping_flow.ui_chunks import build_interactive_product_chunk, build_questionnaire_chunk
-from app.models.ui_chunks import ChatRequest, A2UIChunk, MessageChunk
+from app.memory.adk_state import ShoppingState
+from app.models.ui_chunks import A2UIChunk, MessageChunk
 
 
-async def handle_questionnaire(payload: ChatRequest, session: dict, action: str, data):
-    trace_id = session.get("_trace_id", "unknown")
+def _get_user_message_from_state(state: ShoppingState) -> str:
+    """
+    Lấy user_message có ngữ cảnh đầy đủ hoàn toàn từ State (thay thế cho việc dùng payload).
+    """
+    current_message = state.get("current_message", "").strip()
+    if current_message:
+        return current_message
+    return (state.get("original_keyword") or "").strip()
 
+
+async def adk_questionnaire_node(state: ShoppingState):
+    # -> FIX 1: Trích xuất action, data, và trace_id từ State
+    action = state.get("hidden_action")
+    data = state.get("hidden_payload")
+    trace_id = state.get("session_id", "unknown")
+
+    # -> FIX 2: Báo cáo State trước khi return sớm
     if action not in ["SUBMIT_SURVEY", "SKIP_SURVEY"]:
+        yield {"state_update": state}
         return
 
     last_options_text = ""
@@ -30,22 +44,25 @@ async def handle_questionnaire(payload: ChatRequest, session: dict, action: str,
     )
 
     if action == "SUBMIT_SURVEY":
-        if "answers" not in session:
-            session["answers"] = []
-        session["answers"].append({
-            "attribute_id": session.get("current_attribute_id"),
+        if "answers" not in state:
+            state["answers"] = []
+        state["answers"].append({
+            "attribute_id": state.get("current_attribute_id"),
             "selected_options": data,
         })
 
-    if session["attributes"]:
-        next_attr = session["attributes"].pop(0)
-        session["current_attribute_id"] = next_attr["id"]
+    if state.get("attributes"):
+        next_attr = state["attributes"].pop(0)
+        state["current_attribute_id"] = next_attr["id"]
 
         # [TIẾN TRÌNH 30%] Khi có câu hỏi tiếp theo
         yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
                               "data": {"statusText": "Đã lưu lựa chọn. Đang tải câu hỏi tiếp theo...",
                                        "progressPercent": 30}})
         yield build_questionnaire_chunk(next_attr, allow_multiple=True)
+
+        # -> FIX 3: Báo cáo state trước khi chuyển giao diện
+        yield {"state_update": state}
         return
 
     # [TIẾN TRÌNH 50%] Hết câu hỏi
@@ -58,37 +75,12 @@ async def handle_questionnaire(payload: ChatRequest, session: dict, action: str,
 
     first_prod = None
 
-    first_prod = None
-
     try:
-        # Lấy vi_keyword gốc
-        base_keyword = (
-                session.get("vi_keyword") or session.get("original_keyword") or ""
-        ).strip()
+        # -> FIX 4: Gọi hàm helper để sinh keyword và bóc tách giá (Đã dọn dẹp vòng lặp thừa)
+        final_search_keyword, min_price_filter, max_price_filter = build_search_keyword_from_answers(state)
 
-        # Gom các options user đã chọn từ answers, bỏ qua options là giá tiền
-        min_price_filter, max_price_filter = None, None
-        attribute_terms = []
-
-        for ans in session.get("answers", []):
-            for option in ans.get("selected_options", []):
-                option_str = str(option)
-
-                # Parse giá — nếu có thì lưu filter, không ghép vào keyword
-                parsed_min, parsed_max = parse_budget_bounds(option_str)
-                if parsed_min is not None or parsed_max is not None:
-                    if parsed_min is not None:
-                        min_price_filter = parsed_min
-                    if parsed_max is not None:
-                        max_price_filter = parsed_max
-                else:
-                    # Không phải giá → ghép vào keyword tìm kiếm
-                    attribute_terms.append(option_str)
-
-        # Ghép keyword: "áo khoác không có mũ tay dài"
-        final_search_keyword, min_price_filter, max_price_filter = build_search_keyword_from_answers(session)
-
-        user_message = get_user_message(session, payload)
+        # -> FIX 5: Lấy user_message từ helper sử dụng state
+        user_message = _get_user_message_from_state(state)
 
         yield A2UIChunk(
             a2ui={
@@ -103,13 +95,14 @@ async def handle_questionnaire(payload: ChatRequest, session: dict, action: str,
         raw_products, ranked_stream = await search_and_prepare_stream(
             final_search_keyword=final_search_keyword,
             user_message=user_message,
-            answers=session.get("answers", []),
+            answers=state.get("answers", []),
             min_price_filter=min_price_filter,
             max_price_filter=max_price_filter,
             trace_id=trace_id,
         )
-        session["raw_products"] = raw_products
-        session["pending_products"] = []
+
+        state["raw_products"] = raw_products
+        state["pending_products"] = []
 
         # [TIẾN TRÌNH 85%] Bắt đầu AI Ranking
         yield A2UIChunk(
@@ -122,9 +115,7 @@ async def handle_questionnaire(payload: ChatRequest, session: dict, action: str,
             }
         )
 
-        stream_count = 0
         async for product in ranked_stream:
-            stream_count += 1
             if first_prod is None:
                 first_prod = product
                 # [TIẾN TRÌNH 100%]
@@ -135,14 +126,19 @@ async def handle_questionnaire(payload: ChatRequest, session: dict, action: str,
                     }
                 )
                 yield build_interactive_product_chunk(first_prod)
-                session["phase"] = "PRODUCT_SWIPE"
+                state["phase"] = "PRODUCT_SWIPE"
             else:
-                session["pending_products"].append(product)
+                state["pending_products"].append(product)
+
+        if first_prod is None:
+            yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
+            state["phase"] = "DONE"
 
     except Exception as exc:
         traceback.print_exc()
-        session["pending_products"] = []
+        state["pending_products"] = []
+        yield MessageChunk(content="Xin lỗi, có lỗi xảy ra trong quá trình thu thập thuộc tính.")
+        state["phase"] = "ERROR"
 
-    if first_prod is None:
-        yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
-        session["phase"] = "DONE"
+    # -> FIX 6: Chốt State cuối cùng cho toàn bộ luồng
+    yield {"state_update": state}
