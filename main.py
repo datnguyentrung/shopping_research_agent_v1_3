@@ -11,9 +11,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 
 from app.core.config import settings
-from app.api import chat_router, virtual_try_on_router
+from app.api import chat_router, virtual_try_on_router, websocket_vto_router
 from app.services import redis_service
-# from app.api.endpoints import router as research_router
 
 # Import hàm khởi tạo model (điều chỉnh đường dẫn import cho khớp với project của bạn)
 from app.tools.query_category_classifier_tool import init_classifier_model
@@ -32,41 +31,33 @@ async def lifespan(app: FastAPI):
     Application lifespan context manager.
     Handles startup and shutdown events.
     """
-    # =========================================
-    # STARTUP: Chạy TRƯỚC KHI server nhận request
-    # =========================================
     logger.info("🚀 Starting up Shopping Research Agent API...")
 
     try:
-        # Khởi tạo mô hình Classifier tại đây!
         logger.info("⏳ Initializing Query Category Classifier...")
         init_classifier_model()
-
-        # Thêm các logic khởi tạo khác ở đây (ví dụ: kết nối DB, Redis...)
-
         logger.info("✅ All models initialized successfully!")
     except Exception as e:
         logger.error(f"❌ Initialization failed: {str(e)}")
-        raise e  # Bắt buộc raise để server KHÔNG khởi động nếu model bị lỗi
+        raise e
 
     try:
         logger.info("⏳ Connecting to Redis...")
-        redis_service.connect()
-
+        # LỖI 1 ĐÃ SỬA: Thêm chữ await vào đây
+        await redis_service.connect()
         logger.info("✅ Redis connected successfully!")
     except Exception as e:
         logger.error(f"❌ Redis connection failed: {str(e)}")
-        raise e  # Bắt buộc raise để server KHÔNG khởi động nếu Redis bị lỗi
+        raise e
+
+    # LỖI 2 ĐÃ SỬA: Đã xóa hoàn toàn khối try-except của WebSocket Manager
+    # Vì vto_ws_manager không cần khởi tạo lúc startup server!
 
     logger.info("✨ API is ready to serve requests")
 
     yield  # Ứng dụng hoạt động tại điểm này
 
-    # =========================================
-    # SHUTDOWN: Chạy SAU KHI server bị tắt (Ctrl+C)
-    # =========================================
     logger.info("🛑 Shutting down Shopping Research Agent API...")
-    # Thêm code dọn dẹp tại đây (ví dụ: đóng kết nối Database)
     logger.info("✅ Shutdown completed")
 
 
@@ -94,6 +85,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # Include routers
 app.include_router(chat_router)       # Endpoint chat hiện tại
 app.include_router(virtual_try_on_router)   # Endpoint research
+app.include_router(websocket_vto_router)
 
 @app.get("/")
 async def root():

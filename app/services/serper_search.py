@@ -5,7 +5,7 @@ from typing import List
 import requests
 import json
 
-from app.core import settings
+from app.core.config import settings
 from app.models.product_schemas import CapturedData, ShopInfo
 
 

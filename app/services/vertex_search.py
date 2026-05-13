@@ -7,7 +7,7 @@ from google.cloud import discoveryengine
 
 import asyncio
 
-from app.core import settings
+from app.core.config import settings
 from app.models.product_schemas import CapturedData
 from app.models.ui_chunks import SearchRequest
 
