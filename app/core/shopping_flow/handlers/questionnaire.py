@@ -69,7 +69,8 @@ async def adk_questionnaire_node(state: ShoppingState):
     yield A2UIChunk(
         a2ui={
             "type": "a2ui_processing_status",
-            "data": {"statusText": f"Đã thu thập {len(state.get('answers', []))} tiêu chí. Chuẩn bị tìm kiếm...", "progressPercent": 18},
+            "data": {"statusText": f"Đã thu thập {len(state.get('answers', []))} tiêu chí. Chuẩn bị tìm kiếm...",
+                     "progressPercent": 18},
         }
     )
 
@@ -132,41 +133,42 @@ async def adk_questionnaire_node(state: ShoppingState):
             prod_count += 1
             if first_prod is None:
                 first_prod = product
-                # [95%] Mẫu đầu tiên sân sàng
+            else:
+                state["pending_products"].append(product)
+
+            # SPAM PROGRESS TẠI ĐÂY: Cập nhật tiến độ liên tục nhưng KHÔNG yield sản phẩm
+            if prod_count % 2 == 0:
+                # Công thức đảm bảo tăng dần từ 48 -> 94
+                progress = min(94, 48 + (prod_count // 1))
                 yield A2UIChunk(
                     a2ui={
                         "type": "a2ui_processing_status",
-                        "data": {"statusText": "✨ Mẫu hàng đầu tiên được AI chọn. Chuẩn bị hiển thị...", "progressPercent": 95},
+                        "data": {
+                            "statusText": f"📦 Đã sắp xếp {prod_count} sản phẩm...",
+                            "progressPercent": progress,
+                        },
                     }
                 )
-                yield build_interactive_product_chunk(first_prod)
-                state["phase"] = "PRODUCT_SWIPE"
-            else:
-                state["pending_products"].append(product)
-                # Dynamic progress trong stream
-                if prod_count % 2 == 0:
-                    progress = min(94, 48 + (prod_count // 2))
-                    yield A2UIChunk(
-                        a2ui={
-                            "type": "a2ui_processing_status",
-                            "data": {
-                                "statusText": f"📦 Đã sắp xếp {prod_count} sản phẩm...",
-                                "progressPercent": progress,
-                            },
-                        }
-                    )
 
+        # --- ĐƯA RA NGOÀI VÒNG LẶP: CHỐT HẠ ---
         if first_prod is None:
             yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
             state["phase"] = "DONE"
         else:
-            # [100%] Hoàn tất
+            # 1. Gửi trạng thái hoàn tất 100%
             yield A2UIChunk(
                 a2ui={
                     "type": "a2ui_processing_status",
-                    "data": {"statusText": f"🎉 Xong! Tìm thấy {len(state['pending_products']) + 1} ứng viên.", "progressPercent": 100},
+                    "data": {
+                        "statusText": f"🎉 Xong! Tìm thấy {len(state['pending_products']) + 1} ứng viên.",
+                        "progressPercent": 100
+                    },
                 }
             )
+
+            # 2. GỬI SẢN PHẨM CUỐI CÙNG ĐỂ HIỂN THỊ TRÊN UI
+            yield build_interactive_product_chunk(first_prod)
+            state["phase"] = "PRODUCT_SWIPE"
 
     except Exception as exc:
         traceback.print_exc()

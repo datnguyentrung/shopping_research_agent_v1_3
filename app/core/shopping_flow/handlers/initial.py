@@ -19,11 +19,14 @@ async def adk_initial_node(state: ShoppingState):
     user_message = state.get("current_message", "")
 
     # ── 1% ── Bắt đầu phân tích
-    yield A2UIChunk(a2ui={"type": "a2ui_processing_status", "data": {"statusText": "Đang bóc tách yêu cầu của bạn...", "progressPercent": 1}})
+    yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
+                          "data": {"statusText": "Đang bóc tách yêu cầu của bạn...", "progressPercent": 1}})
 
     try:
         # ── 5% ── Google Translate sửa lỗi
-        yield A2UIChunk(a2ui={"type": "a2ui_processing_status", "data": {"statusText": "Đang sửa lỗi chính tả và dịch sang tiếng Anh...", "progressPercent": 5}})
+        yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
+                              "data": {"statusText": "Đang sửa lỗi chính tả và dịch sang tiếng Anh...",
+                                       "progressPercent": 5}})
         result = await get_bilingual_and_correct(user_message)
         vi_keyword, en_keyword = result.get("vi"), result.get("en")
 
@@ -40,7 +43,8 @@ async def adk_initial_node(state: ShoppingState):
         categories = classify_keyword_topk(en_keyword, k=1)
         top_cat = categories[0] if categories else None
 
-        trace_print(trace_id, "handle_initial_phase", "fix_and_translate_result", viKeyword=vi_keyword, enKeyword=en_keyword)
+        trace_print(trace_id, "handle_initial_phase", "fix_and_translate_result", viKeyword=vi_keyword,
+                    enKeyword=en_keyword)
 
         if not top_cat or top_cat.get('score', 0) < 0.5:
             vi_keyword = "Thời trang và Phụ kiện"
@@ -235,18 +239,10 @@ async def adk_initial_node(state: ShoppingState):
 
             if first_prod is None:
                 first_prod = product
-                # ── 98% ── Mẫu đầu tiên sân sàng
-                yield A2UIChunk(
-                    a2ui={
-                        "type": "a2ui_processing_status",
-                        "data": {"statusText": f"✨ AI đã chọn ra mẫu hàng đầu tiên. Chuẩn bị hiển thị...", "progressPercent": 98},
-                    }
-                )
-                yield build_interactive_product_chunk(first_prod)
-                state["phase"] = "PRODUCT_SWIPE"
-            elif prod_count % 3 == 0:
-                # Dynamic progress trong stream
-                progress = min(95, 72 + (prod_count * 2))
+
+            # Cập nhật progress mượt mà nhưng chưa gửi card sản phẩm
+            if prod_count % 3 == 0:
+                progress = min(94, 72 + (prod_count * 2))
                 yield A2UIChunk(
                     a2ui={
                         "type": "a2ui_processing_status",
@@ -254,22 +250,28 @@ async def adk_initial_node(state: ShoppingState):
                     }
                 )
 
+        # CHỐT HẠ SAU KHI XẾP HẠNG XONG
         if first_prod is None:
             yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
             state["phase"] = "DONE"
         else:
-            # ── 100% ── Hoàn tất
+            # Báo 100% trước
             yield A2UIChunk(
                 a2ui={
                     "type": "a2ui_processing_status",
-                    "data": {"statusText": f"🎉 Xong! Tìm thấy {len(state['pending_products']) + 1} ứng viên.", "progressPercent": 100},
+                    "data": {"statusText": f"🎉 Xong! Tìm thấy {len(state['pending_products'])} ứng viên.",
+                             "progressPercent": 100},
                 }
             )
+            # Hiện sản phẩm cuối cùng
+            yield build_interactive_product_chunk(first_prod)
+            state["phase"] = "PRODUCT_SWIPE"
 
     except Exception as exc:
         traceback.print_exc()
         yield MessageChunk(content="Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu của bạn.")
         state["phase"] = "ERROR"
 
-    # Chốt state cuối cùng
+    # NÚT LƯU GAME: Đây là lệnh cuối cùng của hàm
+    # Orchestrator sẽ lấy dict này để ghi đè vào SESSION_STORE
     yield {"state_update": state}
