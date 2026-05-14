@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Form, UploadFile, File, BackgroundTasks
 
 from app.services import redis_service
-from app.services.vto_service import run_vto_background_task
+from app.services.virtual_try_on.vto_service import run_vto_background_task
 from app.utils.download_image_from_url import download_image_from_url
 from app.utils.time_to_live_utils import random_one_week
 
@@ -19,6 +19,7 @@ async def fire_vto_request(
         background_tasks: BackgroundTasks,  # Thêm BackgroundTasks
         person_image_file: UploadFile = File(...),
         product_file_path: str = Form(...),
+        product_name: str = Form(...),
 ):
     request_id = str(uuid.uuid4())  # Tự sinh ID vì không còn lấy từ Fal.ai nữa
 
@@ -50,7 +51,8 @@ async def fire_vto_request(
         request_id=request_id,
         person_path=person_path,
         garment_path=garment_path,
-        is_garment_temp=is_garment_temp
+        is_garment_temp=is_garment_temp,
+        product_name=product_name
     )
 
     # 5. Trả ID về cho Frontend ngay lập tức

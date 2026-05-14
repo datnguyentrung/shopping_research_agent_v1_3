@@ -1,11 +1,9 @@
 
 import asyncio
 import random
-from typing import Union
 
 from app.core.shopping_flow.product_filters import apply_product_filters
 from app.memory.adk_state import ShoppingState
-from app.models.product_schemas import CapturedData
 from app.models.ui_chunks import MessageChunk
 from app.repositories.category_attribute_repository import CategoryAttributeRepository
 from app.repositories.category_repository import CategoryRepository

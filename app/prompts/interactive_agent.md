@@ -35,7 +35,7 @@ Giọng văn: Điềm tĩnh, thấu hiểu, mang tính chuyên gia, dứt khoát
 
 **[Tên Sản Phẩm Đầy Đủ]**
 
-![Ảnh sản phẩm](Link_Ảnh)
+![[Tên Sản Phẩm Đầy Đủ]](Link_Ảnh)
 
 **💰 Khoản đầu tư:** [Giá tiền] - *(Viết 1 câu Price Framing: VD "Mức giá vừa vặn nhất để sở hữu công nghệ cao mà không lạm chi.")*
 

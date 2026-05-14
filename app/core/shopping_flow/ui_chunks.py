@@ -1,6 +1,6 @@
 from typing import Union
 
-from app.models.product_schemas import CapturedData
+from app.schema.product_schemas import CapturedData
 from app.models.ui_chunks import A2UIChunk
 
 

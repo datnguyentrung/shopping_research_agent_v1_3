@@ -6,7 +6,7 @@ from app.services.serper_search import serper_search
 from app.services.vertex_search import perform_search
 from app.utils.trace_log import trace_plain, trace_print
 
-from app.models.product_schemas import CapturedData
+from app.schema.product_schemas import CapturedData
 from app.models.ui_chunks import SearchRequest
 
 

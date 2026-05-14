@@ -1,6 +1,6 @@
 from typing import TypedDict, Optional, Any, Dict, List
 
-from app.models.product_schemas import CapturedData
+from app.schema.product_schemas import CapturedData
 
 
 class ShoppingState(TypedDict, total=False):

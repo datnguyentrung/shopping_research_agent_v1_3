@@ -4,7 +4,7 @@ from app.core.shopping_flow.final_summary import generate_final_summary_with_llm
 from app.memory.adk_state import ShoppingState
 
 from app.models.ui_chunks import A2UIChunk, MessageChunk
-from app.services.analyze_dislike_reason_service import analyze_dislike_reason
+from app.services.lite_llm.analyze_dislike_reason_service import analyze_dislike_reason
 
 # Các từ khóa thay đổi ngữ cảnh tìm kiếm (giới tính, độ tuổi, loại hình)
 _CONTEXT_SIGNALS = {

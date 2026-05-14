@@ -6,7 +6,7 @@ import requests
 import json
 
 from app.core.config import settings
-from app.models.product_schemas import CapturedData, ShopInfo
+from app.schema.product_schemas import CapturedData, ShopInfo
 
 
 def map_serper_to_captured_data(serper_data: dict) -> list[CapturedData]:

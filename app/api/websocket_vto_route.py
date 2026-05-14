@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect # ✅ ĐÚNG
 
-from app.services.vto_ws_manager import vto_ws_manager
+from app.services.virtual_try_on.vto_ws_manager import vto_ws_manager
 router = APIRouter()
 
 @router.websocket("/ws/vto/{request_id}")

@@ -3,7 +3,7 @@ import json
 import traceback
 
 from app.models.ui_chunks import A2UIChunk, MessageChunk
-from app.services.generate_final_summary_stream_service import generate_final_summary_stream
+from app.services.lite_llm.generate_final_summary_stream_service import generate_final_summary_stream
 
 
 async def generate_final_summary_with_llm(
