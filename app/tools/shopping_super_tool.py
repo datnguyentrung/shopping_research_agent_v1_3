@@ -39,7 +39,7 @@ async def stream_search_and_display(
         max_price: int = None,
         criteria_text: str = ""
 ):
-    session = get_or_create_state(session_id)
+    session = await get_or_create_state(session_id)
     session["vi_keyword"] = keyword
     session["original_keyword"] = keyword
 

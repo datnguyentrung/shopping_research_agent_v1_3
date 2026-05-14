@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # --- Các biến API Keys & Cloud ---
     GOOGLE_API_KEY: str = ""
-    TAVILY_API_KEY: str = ""
+    HF_TOKEN: str = ""
     ZAI_API_KEY: str = ""
     SERPER_API_KEY: str = ""
     VERTEX_ENGINE_ID: str = ""  # Đã sửa lại lỗi chính tả từ VERTX thành VERTEX

@@ -5,6 +5,7 @@ from google.genai.types import ThinkingLevel, Schema, Type
 from gradio_client import Client, handle_file
 import os
 
+from app.core.config import settings
 from app.services import redis_service
 from app.services.garment_analyzer_service import generate_garment_properties
 from app.services.vto_ws_manager import vto_ws_manager
@@ -21,6 +22,8 @@ FALLBACK_SPACES = [
     "FcoTry/IDM-VTON",
     "yisol/IDM-VTON"  # Bản gốc để cuối vì hay bị quá tải nhất
 ]
+
+HF_TOKEN = settings.HF_TOKEN
 
 # ==========================================
 # 2. HÀM LẮP RÁP PROMPT (Đã chuyển sang Async & Nạp ảnh)
@@ -73,7 +76,7 @@ async def process_virtual_try_on_with_fallback(person_img_path, garment_img_path
     for space_id in FALLBACK_SPACES:
         try:
             print(f"\n[🔄 Đang thử gọi API] Space: {space_id}...")
-            client = Client(space_id)
+            client = Client(space_id, token=HF_TOKEN)
 
             # 1. Đảm bảo đã await để lấy chuỗi text chuẩn
             dynamic_prompt = await generate_dynamic_garment_des(garment_img_path)

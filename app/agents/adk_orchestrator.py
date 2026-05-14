@@ -7,11 +7,13 @@ from app.core.shopping_flow.handlers.initial import adk_initial_node
 from app.core.shopping_flow.handlers.category_drilldown import adk_category_drilldown_node
 from app.core.shopping_flow.handlers.questionnaire import adk_questionnaire_node
 from app.core.shopping_flow.handlers.product_swipe import adk_product_swipe_node
+from app.models.ui_chunks import A2UIChunk
 
 _GREETING_PREFIXES = (
     "xin chào", "chào", "hello", "hi", "hey",
     "good morning", "good afternoon", "good evening",
 )
+
 
 def _is_greeting_or_smalltalk(text: str) -> bool:
     normalized = " ".join((text or "").strip().lower().split())
@@ -24,18 +26,28 @@ def _is_greeting_or_smalltalk(text: str) -> bool:
         or normalized.startswith(f"{prefix},")
         for prefix in _GREETING_PREFIXES
     )
+
+
 # ----------------------------
 
 async def run_shopping_orchestrator(payload: ChatRequest):
-    session_id = getattr(payload, "sessionId", None) or str(uuid.uuid4())
+    session_id = getattr(payload, "sessionId", None)
+    is_new_session = False
+
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        is_new_session = True
 
     # Load state hiện tại từ Memory (có thể tích hợp Redis sau nếu cần)
-    state = get_or_create_state(session_id)
+    state = await get_or_create_state(session_id)
 
     # Bơm input mới vào State
     state["current_message"] = (payload.message or "").strip()
     state["hidden_action"] = payload.hidden_events.action if payload.hidden_events else None
     state["hidden_payload"] = payload.hidden_events.payload if payload.hidden_events else None
+
+    if is_new_session:
+        yield A2UIChunk(a2ui={"type": "a2ui_session_init", "data": {"sessionId": session_id}})
 
     # CHÀO HỎI (Ngoại lệ nhỏ xử lý nhanh không cần vào State Machine)
     # -> ĐÃ XÓA DÒNG IMPORT CŨ BỊ LỖI Ở ĐÂY <-
