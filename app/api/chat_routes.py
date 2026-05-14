@@ -7,6 +7,7 @@ from sse_starlette import EventSourceResponse
 
 # Chỉ import Orchestrator mới, tạm biệt file Native cũ!
 from app.agents.adk_orchestrator import run_shopping_orchestrator
+from app.memory.session_store import get_or_create_state
 from app.models.ui_chunks import ChatRequest, ErrorChunk, DoneChunk
 from app.utils.trace_log import is_trace_stream_enabled
 
@@ -126,3 +127,16 @@ async def stream_chat(payload: ChatRequest) -> EventSourceResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+@router.get("/chat/history/{session_id}")
+async def get_chat_history(session_id: str):
+    """
+    Endpoint cho FE gọi khi load lại trang để vẽ lại lịch sử:
+    Chỉ bao gồm câu hỏi gốc và báo cáo Final Summary.
+    """
+    state = await get_or_create_state(session_id)
+
+    return {
+        "sessionId": session_id,
+        "history": state.get("chat_history", [])
+    }

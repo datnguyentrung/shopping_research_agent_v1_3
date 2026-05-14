@@ -1,5 +1,5 @@
 import uuid
-from app.memory.session_store import get_or_create_state
+from app.memory.session_store import get_or_create_state, save_state
 from app.models.ui_chunks import ChatRequest, MessageChunk
 
 # Import các Nodes bạn vừa bọc ở Bước 2
@@ -78,6 +78,8 @@ async def run_shopping_orchestrator(payload: ChatRequest):
         if isinstance(output, dict) and "state_update" in output:
             # Update memory nội bộ (Ghi đè session)
             state.update(output["state_update"])
+
+            await save_state(session_id, state)
         else:
             # Nếu là A2UIChunk hoặc MessageChunk thì stream ra Frontend cho user
             yield output

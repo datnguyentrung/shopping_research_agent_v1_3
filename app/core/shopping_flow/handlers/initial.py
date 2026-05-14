@@ -18,6 +18,10 @@ async def adk_initial_node(state: ShoppingState):
     trace_id = state.get("session_id", "unknown")
     user_message = state.get("current_message", "")
 
+    # ---> THÊM ĐOẠN NÀY: Lưu tin nhắn đầu tiên vào lịch sử <---
+    if user_message and not state.get("chat_history"):
+        state["chat_history"] = [{"role": "user", "content": user_message}]
+
     # ── 1% ── Bắt đầu phân tích
     yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
                           "data": {"statusText": "Đang bóc tách yêu cầu của bạn...", "progressPercent": 1}})
