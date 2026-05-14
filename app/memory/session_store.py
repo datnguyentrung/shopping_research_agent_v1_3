@@ -1,12 +1,41 @@
+import json
+
 from cachetools import TTLCache
 from app.memory.adk_state import ShoppingState
+from app.repositories.chat_session_repository import ChatSessionRepository
+from app.services import redis_service
+from app.services.database import SessionLocal
 
 # Quản lý session đơn giản bằng Dictionary (Memory).
 # Tương lai nếu MB Bank yêu cầu scale, bạn chỉ cần thay TTLCache bằng Redis ở đây.
-SESSION_STORE = TTLCache(maxsize=1000, ttl=3600)
+SESSION_TTL = 86400
 
-def get_or_create_state(session_id: str) -> ShoppingState:
-    if session_id not in SESSION_STORE:
+def _backup_state_to_db_sync(session_id: str, state: ShoppingState):
+    """
+    Hàm đồng bộ chạy ngầm: Khởi tạo kết nối DB, đẩy JSONB xuống và đóng kết nối.
+    """
+    db = SessionLocal()
+    try:
+        repo = ChatSessionRepository(db)
+        repo.upsert_session(session_id, state)
+    except Exception as e:
+        print(f"[❌ LỖI DB] Không thể backup session {session_id} xuống PostgreSQL: {e}")
+    finally:
+        db.close()
+
+async def get_or_create_state(session_id: str) -> ShoppingState:
+    """
+        Truy xuất State từ Redis. Nếu chưa có, khởi tạo State mặc định.
+        """
+    redis_key = f"shopping_state:{session_id}"
+
+    # Đọc dữ liệu từ Redis
+    raw_data = await redis_service.client.get(redis_key)
+
+    if raw_data:
+        # Nếu đã có session, parse JSON trả về dictionary
+        return json.loads(raw_data)
+    else:
         # Khởi tạo state mặc định cho một user mới theo đúng chuẩn ADK
         initial_state: ShoppingState = {
             "session_id": session_id,
@@ -27,11 +56,28 @@ def get_or_create_state(session_id: str) -> ShoppingState:
             "whitelist": [],
             "blacklist": [],
             "preferred_keywords": [],
+            "chat_history": [],
         }
-        SESSION_STORE[session_id] = initial_state
-    return SESSION_STORE[session_id]
+        # Lưu state mới tạo vào Redis với TTL
+        await save_state(session_id, initial_state)
+        return initial_state
 
-def clear_state(session_id: str):
-    """Gọi hàm này khi user hoàn tất luồng để dọn rác RAM ngay lập tức"""
-    if session_id in SESSION_STORE:
-        del SESSION_STORE[session_id]
+async def save_state(session_id: str, state: ShoppingState):
+    """
+    Cập nhật State mới nhất vào Redis.
+    Hàm này sẽ được gọi ở cuối mỗi turn hội thoại.
+    """
+    redis_key = f"shopping_state:{session_id}"
+    await redis_service.client.setex(
+        redis_key,
+        SESSION_TTL,
+        json.dumps(state, ensure_ascii=False)
+    )
+
+async def clear_state(session_id: str):
+    """
+    Xóa State khỏi Redis khi luồng mua sắm kết thúc.
+    Tương lai: Tại đây sẽ trigger luồng đẩy dữ liệu xuống Supabase (Cold Storage).
+    """
+    redis_key = f"shopping_state:{session_id}"
+    await redis_service.client.delete(redis_key)

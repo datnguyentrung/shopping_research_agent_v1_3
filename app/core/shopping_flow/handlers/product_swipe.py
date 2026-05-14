@@ -299,12 +299,29 @@ async def adk_product_swipe_node(state: ShoppingState):
                 progress_offset=62,
             )
 
+            # ---> SỬA LẠI VÒNG LẶP NÀY <---
+            full_summary_text = ""
             async for chunk in final_chunks:
+                # Nếu chunk là text (MessageChunk), cộng dồn vào chuỗi
+                if isinstance(chunk, MessageChunk):
+                    full_summary_text += chunk.content
                 yield chunk
+
+            # Lưu toàn bộ báo cáo AI vào lịch sử
+            if "chat_history" not in state:
+                state["chat_history"] = []
+
+            if full_summary_text:
+                state["chat_history"].append({
+                    "role": "assistant",
+                    "content": full_summary_text.strip()
+                })
+            # --------------------------------
 
             # ── 88% ── Hoàn thiện chi tiết
             yield A2UIChunk(a2ui={"type": "a2ui_processing_status",
-                                  "data": {"statusText": "✍️ Đang hoàn thiện chi tiết báo cáo...", "progressPercent": 88}})
+                                  "data": {"statusText": "✍️ Đang hoàn thiện chi tiết báo cáo...",
+                                           "progressPercent": 88}})
 
             # ── 94% ── Chuẩn bị trả về
             yield A2UIChunk(a2ui={"type": "a2ui_processing_status",

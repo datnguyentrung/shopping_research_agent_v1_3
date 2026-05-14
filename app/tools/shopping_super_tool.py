@@ -6,7 +6,7 @@ from app.core.shopping_flow.ui_chunks import build_interactive_product_chunk
 from app.models.ui_chunks import A2UIChunk, MessageChunk
 from app.services.reranker_service import rank_products_with_llm_stream
 from app.services.search_service import run_parallel_searches
-from app.memory.session_store import get_or_create_state
+from app.memory.session_store import get_or_create_state, save_state
 from google.genai import types
 
 search_and_display_declaration = types.Tool(
@@ -39,7 +39,7 @@ async def stream_search_and_display(
         max_price: int = None,
         criteria_text: str = ""
 ):
-    session = get_or_create_state(session_id)
+    session = await get_or_create_state(session_id)
     session["vi_keyword"] = keyword
     session["original_keyword"] = keyword
 
@@ -50,6 +50,7 @@ async def stream_search_and_display(
 
     if not raw_products:
         yield MessageChunk(content="Rất tiếc mình không tìm thấy sản phẩm nào phù hợp yêu cầu.")
+        await save_state(session_id, session)
         return
 
     yield A2UIChunk(
@@ -85,3 +86,5 @@ async def stream_search_and_display(
 
     if first_prod is None:
         yield MessageChunk(content="Không có sản phẩm nào vượt qua vòng kiểm duyệt của AI.")
+
+    await save_state(session_id, session)

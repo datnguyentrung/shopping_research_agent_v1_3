@@ -21,6 +21,7 @@ class ShoppingState(TypedDict, total=False):
     attributes: List[Dict[str, Any]]
     current_attribute_id: int
     answers: List[Dict[str, Any]]
+    chat_history: List[Dict[str, Any]]
 
     # Products & Feedback
     raw_products: List[CapturedData]

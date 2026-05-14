@@ -2,8 +2,10 @@ import os
 
 from google.cloud import translate_v2 as translate
 
+from app.core.config import settings
+
 os.environ[
-    "GOOGLE_APPLICATION_CREDENTIALS"] = r"D:\Thực tập MB\Shopping_Research_Agent_V1_3\secrets\gcp-credentials.json"
+    "GOOGLE_APPLICATION_CREDENTIALS"] = settings.GOOGLE_APPLICATION_CREDENTIALS
 
 
 async def get_bilingual_and_correct(text: str) -> dict:
