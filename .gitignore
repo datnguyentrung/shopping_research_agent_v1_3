@@ -61,3 +61,4 @@ cache/
 Thumbs.db
 
 secrets/
+.claude/

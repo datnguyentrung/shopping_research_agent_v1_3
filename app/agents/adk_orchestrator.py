@@ -1,4 +1,7 @@
 import uuid
+from typing import Optional
+from uuid import UUID
+
 from app.memory.session_store import get_or_create_state, save_state
 from app.models.ui_chunks import ChatRequest, MessageChunk
 
@@ -30,7 +33,7 @@ def _is_greeting_or_smalltalk(text: str) -> bool:
 
 # ----------------------------
 
-async def run_shopping_orchestrator(payload: ChatRequest):
+async def run_shopping_orchestrator(payload: ChatRequest, user_id: Optional[UUID] = None):
     session_id = getattr(payload, "sessionId", None)
     is_new_session = False
 
@@ -39,7 +42,10 @@ async def run_shopping_orchestrator(payload: ChatRequest):
         is_new_session = True
 
     # Load state hiện tại từ Memory (có thể tích hợp Redis sau nếu cần)
-    state = await get_or_create_state(session_id)
+    state = await get_or_create_state(session_id, user_id = None)
+
+    # Gắn user_id vào state (đăng nhập) hoặc None (guest)
+    state["user_id"] = user_id
 
     # Bơm input mới vào State
     state["current_message"] = (payload.message or "").strip()

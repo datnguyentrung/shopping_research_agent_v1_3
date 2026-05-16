@@ -1,10 +1,12 @@
 from typing import TypedDict, Optional, Any, Dict, List
+from uuid import UUID
 
 from app.schema.product_schemas import CapturedData
 
 
 class ShoppingState(TypedDict, total=False):
     session_id: str
+    user_id: Optional[UUID]  # UUID của user đã đăng nhập (Supabase Auth), None nếu guest
     phase: str # INIT, CATEGORY_DRILLDOWN, QUESTIONNAIRE, PRODUCT_SWIPE, FINAL_SUMMARY
 
     # User Input

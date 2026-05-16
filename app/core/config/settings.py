@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
     REDIS_URL: str = ""
     NGROK_URL: str = ""
+    OPENROUTER_API_KEY: str = ""
 
     # --- Các biến bổ sung từ file .env ---
     DEBUG: bool = False
@@ -35,6 +36,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     TRACE_ENABLED: Optional[str] = None  # Có thể để trống hoặc điền giá trị
     TRACE_STREAM: Optional[str] = None  # Có thể để trống hoặc điền giá trị
+
+    # --- Supabase Auth ---
+    SUPABASE_JWT_SECRET: str = ""  # JWT Secret từ Supabase Dashboard > Settings > API
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 

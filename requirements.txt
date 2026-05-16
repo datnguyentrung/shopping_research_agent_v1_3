@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sse-starlette
+pydantic
+pydantic-settings
+sqlalchemy[asyncio]
+psycopg2-binary
+redis
+cachetools
+PyJWT

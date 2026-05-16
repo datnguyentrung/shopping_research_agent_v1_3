@@ -1,11 +1,13 @@
 import json
 import time
 from datetime import datetime
-from typing import Any
-from fastapi import APIRouter
+from typing import Any, Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from sse_starlette import EventSourceResponse
 
-# Chỉ import Orchestrator mới, tạm biệt file Native cũ!
+from app.core.security import get_current_user_optional
 from app.agents.adk_orchestrator import run_shopping_orchestrator
 from app.memory.session_store import get_or_create_state
 from app.models.ui_chunks import ChatRequest, ErrorChunk, DoneChunk
@@ -47,7 +49,10 @@ def _extract_product_preview(chunk_payload: dict[str, Any]) -> dict[str, Any] | 
 
 
 @router.post("/chat")
-async def stream_chat(payload: ChatRequest) -> EventSourceResponse:
+async def stream_chat(
+    payload: ChatRequest,
+    current_user: Optional[UUID] = Depends(get_current_user_optional),
+) -> EventSourceResponse:
     async def _event_generator():
         trace_id = payload.sessionId or f"anonymous-{id(payload)}"
         start_time = time.perf_counter()
@@ -59,11 +64,12 @@ async def stream_chat(payload: ChatRequest) -> EventSourceResponse:
             trace_id, "request_received", messagePreview=_short_text(payload.message),
             messageLength=len(payload.message or ""), hasHiddenEvents=payload.hidden_events is not None,
             hiddenAction=getattr(payload.hidden_events, "action", None),
+            userId=str(current_user) if current_user else None,
         )
 
         try:
-            # ---> FIX: Gọi Orchestrator của ADK tại đây <---
-            async for chunk in run_shopping_orchestrator(payload):
+            # Gọi Orchestrator và truyền user_id để lưu vào state
+            async for chunk in run_shopping_orchestrator(payload, user_id=current_user):
                 received_count += 1
 
                 # Check nếu node trả ra dict cập nhật state thì bỏ qua không stream về FE
@@ -129,7 +135,10 @@ async def stream_chat(payload: ChatRequest) -> EventSourceResponse:
     )
 
 @router.get("/chat/history/{session_id}")
-async def get_chat_history(session_id: str):
+async def get_chat_history(
+    session_id: str,
+    current_user: Optional[UUID] = Depends(get_current_user_optional),
+):
     """
     Endpoint cho FE gọi khi load lại trang để vẽ lại lịch sử:
     Chỉ bao gồm câu hỏi gốc và báo cáo Final Summary.
