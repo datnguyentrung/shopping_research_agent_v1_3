@@ -39,6 +39,7 @@ class Settings(BaseSettings):
 
     # --- Supabase Auth ---
     SUPABASE_JWT_SECRET: str = ""  # JWT Secret từ Supabase Dashboard > Settings > API
+    SUPABASE_URL: str = ""  # URL dự án Supabase của bạn, ví dụ: https://your-project-id.supabase.co
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, extra="ignore")
 

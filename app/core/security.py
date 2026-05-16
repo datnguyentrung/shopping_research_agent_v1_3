@@ -7,7 +7,7 @@ import logging
 from typing import Optional, Any, Generator
 from uuid import UUID
 
-import jwt
+import jwt  # Sử dụng PyJWT công thức chuẩn
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -23,17 +23,43 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 def _decode_supabase_jwt(token: str) -> dict:
     """
-    Giải mã và xác thực JWT do Supabase Auth cấp.
-    Raises HTTPException 401 nếu token không hợp lệ.
+    Giải mã và xác thực JWT do Supabase Auth cấp (Hỗ trợ cả HS256 và ES256).
     """
     try:
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
+        # 1. Đọc thử Header để kiểm tra thuật toán (algorithm)
+        unverified_header = jwt.get_unverified_header(token)
+        alg = unverified_header.get("alg", "HS256")
+
+        # Lấy cấu hình URL từ settings
+        supabase_url = settings.SUPABASE_URL
+        if not supabase_url:
+            logger.error("❌ Cảnh báo: settings.SUPABASE_URL đang để trống! Hãy kiểm tra file .env")
+
+        if alg == "ES256":
+            # 2. Xử lý thuật toán bất đối xứng ES256 bằng PyJWKClient của PyJWT
+            jwks_url = f"{supabase_url}/auth/v1/.well-known/jwks.json"
+
+            # Khởi tạo bộ Client lấy và cache key tự động
+            jwks_client = jwt.PyJWKClient(jwks_url)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256"],
+                audience="authenticated",
+            )
+        else:
+            # 3. Xử lý thuật toán đối xứng HS256 thông thường
+            payload = jwt.decode(
+                token,
+                settings.SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                audience="authenticated",
+            )
+
         return payload
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -49,6 +75,12 @@ def _decode_supabase_jwt(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token không hợp lệ: {e}",
         )
+    except jwt.PyJWTError as e:  # FIX lỗi AttributeError: Sử dụng PyJWTError của PyJWT thay vì JWTError
+        logger.error(f"❌ Lỗi xác thực JWT tổng quát: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Lỗi xác thực Token: {str(e)}",
+        )
 
 
 def get_current_user_optional(
@@ -56,17 +88,12 @@ def get_current_user_optional(
 ) -> Optional[UUID]:
     """
     FastAPI Dependency: trích xuất user_id từ Supabase JWT.
-
-    - Nếu không có token → trả về None (Guest).
-    - Nếu có token hợp lệ → trả về UUID của user từ claim 'sub'.
-    - Nếu token sai/hết hạn → raise 401.
     """
     if not token:
         return None  # Guest user
 
     payload = _decode_supabase_jwt(token)
 
-    # sub trong Supabase JWT là UUID của user
     sub: str | None = payload.get("sub")
     if not sub:
         raise HTTPException(
@@ -86,7 +113,6 @@ def get_current_user_optional(
 def get_db_session() -> Generator[Any, Any, None]:
     """
     FastAPI Dependency: cung cấp SQLAlchemy Session.
-    Session được tự động đóng sau khi endpoint xử lý xong.
     """
     db = SessionLocal()
     try:

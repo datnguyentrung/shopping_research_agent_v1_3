@@ -11,7 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 
 from app.core.config import settings
-from app.api import chat_router, virtual_try_on_router, websocket_vto_router
+from app.api import chat_router, virtual_try_on_router, websocket_vto_router, conversation_router
 from app.services import redis_service
 
 # Import hàm khởi tạo model (điều chỉnh đường dẫn import cho khớp với project của bạn)
@@ -86,6 +86,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(chat_router)       # Endpoint chat hiện tại
 app.include_router(virtual_try_on_router)   # Endpoint research
 app.include_router(websocket_vto_router)
+app.include_router(conversation_router)
 
 @app.get("/")
 async def root():
