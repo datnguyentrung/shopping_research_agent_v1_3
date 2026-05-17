@@ -64,16 +64,14 @@ async def get_or_create_state(session_id: str, user_id: Optional[UUID] = None) -
     redis_key = f"shopping_state:{session_id}"
 
     # 1. Đọc dữ liệu từ Redis (Cho cả Guest và User)
-    raw_data = await redis_service.client.get(redis_key)
-    if raw_data:
-        state = json.loads(raw_data)
+    # 1. Đọc dữ liệu từ Redis (Thay vì gọi raw client, gọi qua wrapper)
+    state = await redis_service.get_state(redis_key)
 
-        # [TÍNH NĂNG HAY]: Nếu khách vãng lai đang chat mà bấm Đăng nhập
-        # 🌟 SỬA TẠI ĐÂY: Ép kiểu sang chuỗi str để đồng bộ thuần JSON
+    if state:
+        # Nếu khách vãng lai đang chat mà bấm Đăng nhập
         if user_id and not state.get("user_id"):
             state["user_id"] = str(user_id)
             await save_state(session_id, state)
-
         return state
 
     # 2. Cache Miss: CHỈ tìm trong Database nếu họ LÀ USER THỰC TẾ
@@ -131,20 +129,11 @@ async def get_or_create_state(session_id: str, user_id: Optional[UUID] = None) -
 
 
 async def save_state(session_id: str, state: ShoppingState):
-    """
-    Cập nhật State mới nhất vào Redis với TTL linh hoạt dựa trên loại User.
-    """
     redis_key = f"shopping_state:{session_id}"
-
-    # Kiểm tra xem có phải là Guest hay không để set TTL phù hợp
     ttl = random_one_day() if state.get("user_id") else random_one_week()
 
-    await redis_service.client.setex(
-        redis_key,
-        ttl,
-        # 🌟 GIỮ NGUYÊN BẢO HIỂM: Thêm default=str để phòng chống tất cả các loại object lạ khác độc hại
-        json.dumps(state, ensure_ascii=False, default=str)
-    )
+    # Lưu qua hàm wrapper để có log
+    await redis_service.set_state(redis_key, state, ttl)
 
     # 2. Kích hoạt luồng chạy ngầm backup xuống PostgreSQL
     asyncio.create_task(
@@ -154,4 +143,5 @@ async def save_state(session_id: str, state: ShoppingState):
 
 async def clear_state(session_id: str):
     redis_key = f"shopping_state:{session_id}"
-    await redis_service.client.delete(redis_key)
+    # Xoá qua hàm wrapper để có log
+    await redis_service.delete_key(redis_key)
