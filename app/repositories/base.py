@@ -1,7 +1,7 @@
 
 from __future__ import annotations
 
-from typing import Generic, Iterable, Optional, Type, TypeVar
+from typing import Generic, Iterable, Optional, Type, TypeVar, Any
 
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,7 @@ class BaseRepository(Generic[ModelType]):
         self.db = db
         self.model = model
 
-    def get(self, id: int) -> Optional[ModelType]:
+    def get(self, id: Any) -> Optional[ModelType]:
         return self.db.get(self.model, id)
 
     def list(self, *, skip: int = 0, limit: int = 100) -> Iterable[ModelType]:

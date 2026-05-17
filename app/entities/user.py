@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, func, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, func, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -15,3 +15,5 @@ class User(Base):
 
     # Relationship
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
+    # THÊM MỚI: Relationship cho VirtualTryOn
+    virtual_try_ons = relationship("VirtualTryOn", back_populates="user", cascade="all, delete-orphan")

@@ -2,11 +2,15 @@ import os
 import base64
 import asyncio
 import logging
+from uuid import UUID
+
 from openai import OpenAI
 
+from app.entities.virtual_try_on import VirtualTryOnStatus
+from app.repositories.virtual_try_on_repository import VirtualTryOnRepository
 from app.services import redis_service
+from app.services.database import SessionLocal
 from app.services.virtual_try_on.vto_ws_manager import vto_ws_manager
-from app.utils.time_to_live_utils import random_one_week
 from app.core.config import settings
 
 # ---> THÊM IMPORT HÀM VISION AGENT CỦA BẠN VÀO ĐÂY <---
@@ -28,8 +32,13 @@ def encode_image_to_base64(image_path: str) -> str:
 # ==========================================
 # BACKGROUND TASK: FLUX.2 KLEIN + VISION AGENT
 # ==========================================
-async def run_vto_background_task(request_id: str, person_path: str, garment_path: str, is_garment_temp: bool,
-                                  product_name: str):
+async def run_vto_background_task(
+        request_id: str,
+        try_on_id: UUID,
+        person_path: str,
+        garment_path: str,
+        is_garment_temp: bool,
+        product_name: str):
     try:
         logger.info(f"[{request_id}] Bắt đầu xử lý với FLUX.2 Klein 4B qua OpenRouter")
 
@@ -57,8 +66,9 @@ async def run_vto_background_task(request_id: str, person_path: str, garment_pat
             f"Yêu cầu nghiêm ngặt:\n"
             f"1. {change_instruction}\n"
             f"2. GIỮ NGUYÊN khuôn mặt, kiểu tóc, làn da, hình xăm (nếu có) và bối cảnh.\n"
-            f"3. Sản phẩm mới cần được render chính xác: '{dynamic_prompt}'.\n"
-            f"4. Đảm bảo nếp gấp vải và bóng đổ tự nhiên trên cơ thể người mẫu."
+            f"3. TUYỆT ĐỐI GIỮ NGUYÊN TỈ LỆ KHUNG HÌNH (ASPECT RATIO) và kích thước của người trong ảnh 1. Không bóp méo hay làm lùn người.\n"  # <-- Thêm dòng này
+            f"4. Sản phẩm mới cần được render chính xác: '{dynamic_prompt}'.\n"
+            f"5. Đảm bảo nếp gấp vải và bóng đổ tự nhiên trên cơ thể người mẫu."
         )
 
         prompt_content = [
@@ -103,25 +113,58 @@ async def run_vto_background_task(request_id: str, person_path: str, garment_pat
         if not result_data_uri:
             raise ValueError("API OpenRouter trả về thành công nhưng không tìm thấy dữ liệu ảnh.")
 
-        # 6. Cập nhật Redis và bắn WebSocket
-        old_data = await redis_service.get_vto_request(request_id) or {}
-        old_data["status"] = "completed"
-        old_data["result_url"] = result_data_uri
+        # ==========================================
+        # 6. CẬP NHẬT DATABASE
+        # ==========================================
+        with SessionLocal() as db:
+            repo = VirtualTryOnRepository(db)
+            repo.update_status(
+                try_on_id=try_on_id,
+                status=VirtualTryOnStatus.COMPLETED,
+                result_base64=result_data_uri
+            )
+        logger.info(f"[✅ Hoàn tất DB] Đã cập nhật database COMPLETED cho try_on_id: {try_on_id}")
 
-        await redis_service.set_vto_request(request_id, old_data, ttl=random_one_week())
-        logger.info(f"[✅ Hoàn tất] Đã lưu ảnh từ FLUX cho request: {request_id}")
-        await vto_ws_manager.send_vto_result(request_id, old_data)
+        # ==========================================
+        # 7. CẬP NHẬT REDIS VÀ BẮN WEBSOCKET
+        # ==========================================
+        # Update 1 chạm và nhận lại dict mới nhất
+        updated_data = await redis_service.update_vto_hash(
+            request_id=request_id,
+            updates={
+                "status": "completed",
+                "result_url": result_data_uri
+            }
+        )
+
+        logger.info(f"[✅ Redis] Đã cập nhật Hash Cache cho request: {request_id}")
+        await vto_ws_manager.send_vto_result(request_id, updated_data)
 
     except Exception as e:
         error_msg = str(e)
         logger.error(f"[❌ LỖI BACKGROUND TASK] Request {request_id} thất bại: {error_msg}")
 
-        old_data = await redis_service.get_vto_request(request_id) or {}
-        old_data["status"] = "error"
-        old_data["error"] = error_msg
+        # Cập nhật lỗi xuống DB
+        try:
+            with SessionLocal() as db:
+                repo = VirtualTryOnRepository(db)
+                repo.update_status(
+                    try_on_id=try_on_id,
+                    status=VirtualTryOnStatus.REJECTED,
+                    error=error_msg
+                )
+        except Exception as db_err:
+            logger.error(f"[❌ LỖI DATABASE] Không thể cập nhật lỗi cho DB: {db_err}")
 
-        await redis_service.set_vto_request(request_id, old_data, ttl=random_one_week())
-        await vto_ws_manager.send_vto_result(request_id, old_data)
+            # Cập nhật lỗi lên Redis & Bắn WebSocket
+        updated_data = await redis_service.update_vto_hash(
+            request_id=request_id,
+            updates={
+                "status": "error",
+                "error": error_msg
+            }
+        )
+        await vto_ws_manager.send_vto_result(request_id, updated_data)
 
     finally:
         if os.path.exists(person_path):

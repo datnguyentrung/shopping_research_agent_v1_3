@@ -104,6 +104,39 @@ class RedisService:
         except Exception as e:
             logger.error(f"[Redis] RES - Delete Key Failed | Key: {key} | Error: {str(e)}")
 
+    async def init_vto_hash(self, request_id: str, ttl: int):
+        """Khởi tạo request VTO dạng Hash (HSET)"""
+        redis_key = f"vto:request:{request_id}"
+        logger.info(f"[Redis] REQ - Init VTO Hash | Key: {redis_key}")
+        try:
+            # Lưu các field ban đầu
+            await self.client.hset(
+                redis_key,
+                mapping={
+                    "status": "pending",
+                    "result_url": "",
+                    "error": ""
+                }
+            )
+            # Set thời gian hết hạn
+            await self.client.expire(redis_key, ttl)
+        except Exception as e:
+            logger.error(f"[Redis] RES - Init Hash Failed | Key: {redis_key} | Error: {str(e)}")
+
+    async def update_vto_hash(self, request_id: str, updates: dict) -> dict:
+        """Cập nhật 1 vài field và trả về toàn bộ object mới nhất để bắn WebSocket"""
+        redis_key = f"vto:request:{request_id}"
+        try:
+            if updates:
+                # Chỉ update những trường được truyền vào (VD: {"status": "completed"})
+                await self.client.hset(redis_key, mapping=updates)
+
+            # Lấy toàn bộ data mới nhất ra để làm payload cho WebSocket
+            data = await self.client.hgetall(redis_key)
+            return data
+        except Exception as e:
+            logger.error(f"[Redis] RES - Update Hash Failed | Key: {redis_key} | Error: {str(e)}")
+            return {}
 
 # Khởi tạo instance dùng chung
 redis_service = RedisService()
