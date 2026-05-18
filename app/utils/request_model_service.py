@@ -16,6 +16,17 @@ def get_client() -> genai.Client:
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
     return client
 
+def get_client_cloud():
+    """
+    Khởi tạo Google GenAI Client chạy qua luồng Vertex AI
+    để cấn trừ chi phí trực tiếp vào gói 300 USD (7.9 triệu VND) free credit.
+    """
+    return genai.Client(
+        vertexai=True,
+        # project="shopping-research-419204",  # ID dự án lấy từ màn hình của ông
+        location="us-central1"               # Môi trường us-central1 hỗ trợ đầy đủ các dòng Gemini 3.1 và Imagen
+    )
+
 
 def _build_user_contents(text: str) -> list[types.Content]:
     return [types.Content(role="user", parts=[types.Part.from_text(text=text)])]
