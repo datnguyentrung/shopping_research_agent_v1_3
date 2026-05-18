@@ -26,6 +26,7 @@ async def fire_vto_request(
         background_tasks: BackgroundTasks,  # Thêm BackgroundTasks
         person_image_file: UploadFile = File(...),
         product_file_path: str = Form(...),
+        product_url: str = Form(...),
         product_name: str = Form(...),
         db: Session = Depends(get_db_session),
         current_user_id = Depends(get_current_user_optional)
@@ -53,7 +54,7 @@ async def fire_vto_request(
     repo = VirtualTryOnRepository(db)
     new_try_on_record = repo.create_try_on(
         user_id=current_user_id,
-        product_path=product_file_path,
+        product_path=product_url,
         status=VirtualTryOnStatus.PENDING
     )
 

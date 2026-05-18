@@ -2,10 +2,8 @@ from typing import Optional, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 
-from app.entities import VirtualTryOn
 from app.entities.virtual_try_on import VirtualTryOn, VirtualTryOnStatus
 from app.repositories.base import BaseRepository, ModelType
-from app.schema.virtual_schemas import VirtualTryOnSchema
 
 
 class VirtualTryOnRepository(BaseRepository[VirtualTryOn]):
