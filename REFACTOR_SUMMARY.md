@@ -147,7 +147,7 @@ Refactored toàn bộ 5 files handlers + final_summary để bổ sung **chi ti�
 ```bash
 curl -X POST http://localhost:8000/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{"message": "áo khoác nam", "sessionId": "test-123"}'
+  -d '{"message": "áo khoác nam", "sessionId": "tests-123"}'
 ```
 
 ### 2. Kiểm tra monotonicity:

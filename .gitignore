@@ -63,3 +63,4 @@ Thumbs.db
 secrets/
 .claude/
 .agents/
+tests/
